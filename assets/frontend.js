@@ -202,4 +202,34 @@ jQuery(function($){
   if ($('#brxe-d807f8').length) {
     reloadGrid();
   }
+
+  // ════════════════════════════════════════════════════════════════
+  // Formulario JetFormBuilder (ficha de producto): rellenar "nombre_evento"
+  // con el post_title del evento. El nombre llega resuelto desde PHP
+  // (dlwFront.nombreEvento); el ID venía por query string (?evento=2010).
+  // ════════════════════════════════════════════════════════════════
+  function rellenarNombreEvento() {
+    var nombre = (window.dlwFront && window.dlwFront.nombreEvento) || '';
+    if (!nombre) return;
+    // El input hidden puede aparecer más de una vez si hay varios formularios.
+    $('input[name="nombre_evento"]').each(function() {
+      if (this.value === nombre) return;      // ya está puesto → no re-disparar eventos
+      this.value = nombre;
+      // JetFormBuilder mantiene un estado reactivo: hay que notificarle el cambio
+      // para que envíe el valor y no un campo vacío.
+      this.dispatchEvent(new Event('input',  { bubbles: true }));
+      this.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  if (window.dlwFront && window.dlwFront.nombreEvento) {
+    rellenarNombreEvento();
+    // Red de seguridad: JetFormBuilder puede montar o resetear el campo tras el
+    // ready. Reintentamos unas cuantas veces; solo re-aplica si el valor cambió.
+    var reintentosEvento = 0;
+    var timerEvento = setInterval(function() {
+      rellenarNombreEvento();
+      if (++reintentosEvento >= 10) clearInterval(timerEvento);
+    }, 300);
+  }
 });

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: DLW Eventos — Catálogo de productos
  * Description: Gestión de productos remotos de dlongwood.com para eventos/congresos. Reemplazo drop-in de los code snippets actuales.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Piensaenweb
  * Text Domain: dlw-eventos
  *
@@ -21,7 +21,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DLW_EVENTOS_VERSION', '1.1.0');
+define('DLW_EVENTOS_VERSION', '1.2.0');
 define('DLW_EVENTOS_PATH', plugin_dir_path(__FILE__));
 define('DLW_EVENTOS_URL', plugin_dir_url(__FILE__));
 define('DLW_API_BASE', 'https://www.dlongwood.com/wp-json/catalogo/v1/productos');
@@ -154,9 +154,18 @@ add_action('wp_enqueue_scripts', function () {
         wp_enqueue_style('dlw-frontend-css', DLW_EVENTOS_URL . 'assets/frontend.css', [], DLW_EVENTOS_VERSION);
         wp_enqueue_style('dlw-producto-css', DLW_EVENTOS_URL . 'assets/producto.css', [], DLW_EVENTOS_VERSION);
         wp_enqueue_script('dlw-frontend-js', DLW_EVENTOS_URL . 'assets/frontend.js', ['jquery'], DLW_EVENTOS_VERSION, true);
+
+        // Nombre del evento (post_title) para el formulario JetFormBuilder de la ficha de producto.
+        // El ID llega por query string (?evento=2010); lo resolvemos en servidor → 0 llamadas HTTP extra.
+        $evento_id = absint($_GET['evento'] ?? 0);
+        $nombre_evento = ($evento_id && get_post_type($evento_id) === 'eventos')
+            ? html_entity_decode(get_the_title($evento_id), ENT_QUOTES, 'UTF-8')
+            : '';
+
         wp_localize_script('dlw-frontend-js', 'dlwFront', [
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce'   => wp_create_nonce('dlw_frontend_nonce'),
+            'ajaxUrl'      => admin_url('admin-ajax.php'),
+            'nonce'        => wp_create_nonce('dlw_frontend_nonce'),
+            'nombreEvento' => $nombre_evento,
         ]);
     }
 });
