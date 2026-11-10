@@ -152,15 +152,16 @@ function dlw_filtrar_productos_ajax() {
 
     $productos = dlw_get_productos_filtrados($ids, $filtros ?: []);
 
-    // Convertir a arrays para JSON (misma estructura que la API)
+    // Compatibilidad con páginas cacheadas con el JS anterior (v1.2.x). El JS
+    // actual ya no llama aquí: el grid se pinta en el servidor y se filtra en el
+    // navegador. Sin "descripcion" (era ~20 KB por producto y el grid no la usa).
     $result = array_map(function ($p) {
         return [
             'id'               => $p->id,
             'titulo'           => $p->titulo,
             'extracto'         => $p->extracto,
-            'descripcion'      => $p->descripcion,
             'imagen_destacada' => $p->imagen_destacada,
-            'meta_fields'      => $p->meta_fields,
+            'meta_fields'      => ['sellos' => $p->meta_fields->sellos ?? []],
             'taxonomias'       => $p->taxonomias,
             'enlace'           => $p->enlace,
         ];

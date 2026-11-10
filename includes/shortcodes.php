@@ -10,7 +10,70 @@ if (!defined('ABSPATH')) exit;
 // SNIPPET 2: Archive Evento
 // ════════════════════════════════════════════════════════════════
 
-// Grid de productos
+/** Logos de los sellos (grid y ficha). */
+function dlw_sellos_img() {
+    return [
+        'IVD' => 'https://www.dlongwood.com/wp-content/uploads/2024/09/ivd-logo.png',
+        'CE'  => 'https://www.dlongwood.com/wp-content/uploads/2024/09/ce-logo.png',
+        'RUO' => 'https://www.dlongwood.com/wp-content/uploads/2024/09/ruo-logo.png',
+        'PSO' => 'https://www.dlongwood.com/wp-content/uploads/2024/09/pso-logo.png',
+    ];
+}
+
+/** Texto plano con entidades decodificadas (™, …) y escapado para HTML. */
+function dlw_texto($str) {
+    return esc_html(html_entity_decode((string) $str, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+}
+
+/**
+ * Tarjeta de producto del grid. Mismo marcado y clases que generaba antes
+ * frontend.js, más data-* con las taxonomías para filtrar en el navegador.
+ */
+function dlw_render_tarjeta($p, $evento_id) {
+    $sellos_img = dlw_sellos_img();
+    $sx = '';
+    $sellos = $p->meta_fields->sellos ?? [];
+    foreach ((array) $sellos as $sello) {
+        $clave = strtoupper(trim((string) $sello));
+        if (isset($sellos_img[$clave])) {
+            $sx .= '<img width="82" height="60" src="' . esc_url($sellos_img[$clave])
+                 . '" class="brxe-image css-filter sello-' . esc_attr(strtolower($clave)) . '" alt="" loading="lazy">';
+        }
+    }
+    if ($sx) $sx = '<div class="brxe-iuxwmo brxe-block">' . $sx . '</div>';
+
+    $extracto = html_entity_decode((string) $p->extracto, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+    $url = add_query_arg(array_filter([
+        'producto' => $p->id,
+        'evento'   => $evento_id,
+    ]), home_url('/'));
+
+    $tax = [];
+    foreach (['marcas', 'tecnologias', 'familias'] as $t) {
+        $tax[$t] = array_values(array_map('strval', (array) ($p->taxonomias->{$t} ?? [])));
+    }
+
+    $titulo = dlw_texto($p->titulo);
+
+    return '<a href="' . esc_url($url) . '" class="brxe-myhzzt brxe-block jsfb-filterable jsfb-query--productos"'
+         . ' data-producto="' . (int) $p->id . '" data-tax="' . esc_attr(wp_json_encode($tax)) . '">'
+         .   '<div class="brxe-enlgrr brxe-block">' . $sx
+         .     '<img width="350" height="350" src="' . esc_url($p->imagen_destacada) . '" class="brxe-frfswr brxe-image producto-imagen css-filter size-medium_large" alt="' . $titulo . '" loading="lazy" decoding="async">'
+         .   '</div>'
+         .   '<h3 class="brxe-vmggvb brxe-heading texto-equilibrado producto-titulo">' . $titulo . '</h3>'
+         .   '<div class="brxe-esybzj brxe-text-basic extracto-listing">' . esc_html($extracto) . '</div>'
+         . '</a>';
+}
+
+/** IDs de producto de un evento (CSV en event_product_ids). */
+function dlw_ids_evento($evento_id) {
+    $ids_raw = (string) get_post_meta($evento_id, 'event_product_ids', true);
+    return array_values(array_unique(array_filter(array_map('absint', explode(',', $ids_raw)))));
+}
+
+// Grid de productos: se pinta en el servidor (HTML cacheable, sin AJAX ni
+// "parpadeo" del esqueleto). Los filtros solo ocultan/muestran tarjetas en JS.
 add_shortcode('productos_remotos_grid', function ($atts) {
     $atts = shortcode_atts([
         'evento_id'       => 0,
@@ -18,31 +81,37 @@ add_shortcode('productos_remotos_grid', function ($atts) {
         'filtros'         => '{}',
     ], $atts);
 
+    dlw_enqueue_frontend();
+
     $evento_id = absint($atts['evento_id'] ?: get_the_ID());
     $producto_actual = absint($atts['producto_actual']);
-    $ids_raw = get_post_meta($evento_id, 'event_product_ids', true);
 
-    if (!$ids_raw) return '<div id="brxe-d807f8"></div>';
-
-    $ids = array_values(array_unique(array_filter(array_map('absint', explode(',', $ids_raw)))));
+    $ids = dlw_ids_evento($evento_id);
     if ($producto_actual) {
         $ids = array_values(array_diff($ids, [$producto_actual]));
     }
     if (!$ids) return '<div id="brxe-d807f8"></div>';
 
+    $html = '';
+    foreach (dlw_get_productos_listado($ids) as $p) {
+        $html .= dlw_render_tarjeta($p, $evento_id);
+    }
+    if (!$html) $html = '<div class="dlw-sin-productos" style="padding:2em;">No hay productos con este filtro.</div>';
+
     return '<div id="brxe-d807f8" class="brxe-block brx-grid grid-4" data-ids="'
-         . esc_attr(implode(',', $ids)) . '" data-evento-id="' . esc_attr($evento_id) . '"></div>';
+         . esc_attr(implode(',', $ids)) . '" data-evento-id="' . esc_attr($evento_id) . '">'
+         . $html . '</div>';
 });
 
 // Filtros — función DRY
 function dlw_render_filtro_shortcode($atts, $taxonomia) {
+    dlw_enqueue_frontend();
     $atts = shortcode_atts(['evento_id' => 0], $atts);
     $evento_id = absint($atts['evento_id'] ?: get_the_ID());
     $ids_raw = get_post_meta($evento_id, 'event_product_ids', true);
     if (!$ids_raw) return '';
 
-    $ids = array_map('absint', explode(',', $ids_raw));
-    $valores = dlw_get_taxonomia_valores($ids, $taxonomia);
+    $valores = dlw_get_taxonomia_valores(dlw_ids_evento($evento_id), $taxonomia);
 
     if (empty($valores)) return '';
 
@@ -113,12 +182,7 @@ add_shortcode('producto_api', function ($atts) {
             return esc_url($p->imagen_destacada ?? '');
 
         case 'img_tag':
-            $sellos_img = [
-                'IVD' => 'https://www.dlongwood.com/wp-content/uploads/2024/09/ivd-logo.png',
-                'CE'  => 'https://www.dlongwood.com/wp-content/uploads/2024/09/ce-logo.png',
-                'RUO' => 'https://www.dlongwood.com/wp-content/uploads/2024/09/ruo-logo.png',
-                'PSO' => 'https://www.dlongwood.com/wp-content/uploads/2024/09/pso-logo.png',
-            ];
+            $sellos_img = dlw_sellos_img();
 
             $sx = '';
             $sellos = (array) ($p->meta_fields->sellos ?? []);

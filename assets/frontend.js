@@ -1,134 +1,72 @@
 jQuery(function($){
+  // ════════════════════════════════════════════════════════════════
+  // Grid de productos + filtros.
+  // Las tarjetas llegan ya pintadas desde el servidor (shortcode
+  // [productos_remotos_grid]) con sus taxonomías en data-tax. Filtrar es
+  // solo ocultar/mostrar: 0 peticiones al servidor.
+  // AND entre grupos (marcas, tecnologías, áreas), OR dentro de cada grupo.
+  // ════════════════════════════════════════════════════════════════
   var filtrosActivos = {};
-  var nonce = (window.dlwFront && window.dlwFront.nonce) || '';
-  var ajaxurl = (window.dlwFront && window.dlwFront.ajaxUrl) || window.ajaxurl || '';
-
-  function getGridData() {
-    var $grid = $('#brxe-d807f8');
-    return ($grid.data('ids') || '').toString().split(',').filter(Boolean);
-  }
-
-  // Decodifica entidades HTML (&#x2122; → ™, &hellip; → …) y luego
-  // escapa solo los caracteres peligrosos (<, >, &, ") para prevenir XSS
-  function decodeHtml(str) {
-    if (!str) return '';
-    var txt = document.createElement('textarea');
-    txt.innerHTML = str;
-    return txt.value;
-  }
+  var GRUPOS = ['marcas', 'tecnologias', 'familias'];
+  var $grid = $('#brxe-d807f8');
 
   function escHtml(str) {
-    // Primero decodificar entidades que vienen de la DB
-    var decoded = decodeHtml(str);
-    // Luego escapar para inserción segura en HTML
     var div = document.createElement('div');
-    div.appendChild(document.createTextNode(decoded));
+    div.appendChild(document.createTextNode(str == null ? '' : String(str)));
     return div.innerHTML;
   }
 
-  function renderGrid(productos) {
-    var $grid = $('#brxe-d807f8');
-    $grid.empty();
-    var evento_id = $grid.data('evento-id') || '';
-    var site_url = window.location.origin || 'https://eventos.dlongwood.com';
-
-    var sellos_img = {
-      'IVD': 'https://www.dlongwood.com/wp-content/uploads/2024/09/ivd-logo.png',
-      'CE' : 'https://www.dlongwood.com/wp-content/uploads/2024/09/ce-logo.png',
-      'RUO': 'https://www.dlongwood.com/wp-content/uploads/2024/09/ruo-logo.png',
-      'PSO': 'https://www.dlongwood.com/wp-content/uploads/2024/09/pso-logo.png'
-    };
-
-    if (!Array.isArray(productos)) productos = [];
-    if (!productos.length) {
-      $grid.html('<div style="padding:2em;">No hay productos con este filtro.</div>');
-      return;
+  function taxDe(card) {
+    if (!card._dlwTax) {
+      try { card._dlwTax = JSON.parse(card.getAttribute('data-tax') || '{}'); }
+      catch (e) { card._dlwTax = {}; }
     }
+    return card._dlwTax;
+  }
 
-    var fragment = document.createDocumentFragment();
+  function cumple(card) {
+    var tax = taxDe(card);
+    return Object.keys(filtrosActivos).every(function(grupo) {
+      var valores = filtrosActivos[grupo] || [];
+      if (!valores.length) return true;
+      var propios = tax[grupo] || [];
+      return valores.some(function(v) { return propios.indexOf(v) !== -1; });
+    });
+  }
 
-    productos.forEach(function(p) {
-      var sx = '';
-      if (p.meta_fields && p.meta_fields.sellos) {
-        var sellos = Array.isArray(p.meta_fields.sellos) ? p.meta_fields.sellos : [p.meta_fields.sellos];
-        sellos.forEach(function(sello) {
-          var clave = (sello + '').toUpperCase().trim();
-          if (sellos_img[clave]) {
-            sx += '<img width="82" height="60" src="' + sellos_img[clave] + '" class="brxe-image css-filter sello-' + clave.toLowerCase() + '" alt="" loading="lazy">';
-          }
-        });
-      }
-      if (sx) sx = '<div class="brxe-iuxwmo brxe-block">' + sx + '</div>';
+  function aplicarFiltros() {
+    var $cards = $grid.find('[data-producto]');
+    if (!$cards.length) return;
 
-      var extracto = '';
-      if (p.extracto) {
-        extracto = escHtml(p.extracto);
-      } else {
-        var descLimpia = (p.descripcion || '')
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-          .replace(/<[^>]+>/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        extracto = escHtml(descLimpia.slice(0, 180));
-        if (descLimpia.length > 180) extracto += '…';
-      }
+    var disponibles = {};
+    GRUPOS.forEach(function(g) { disponibles[g] = {}; });
+    var visibles = 0;
 
-      var url = site_url + '/?producto=' + p.id + (evento_id ? '&evento=' + evento_id : '');
-      var tituloEsc = escHtml(p.titulo || '');
-
-      var el = document.createElement('a');
-      el.href = url;
-      el.className = 'brxe-myhzzt brxe-block jsfb-filterable jsfb-query--productos';
-      el.setAttribute('data-producto', p.id);
-      el.innerHTML =
-        '<div class="brxe-enlgrr brxe-block">' + sx +
-          '<img width="350" height="350" src="' + (p.imagen_destacada || '') + '" class="brxe-frfswr brxe-image producto-imagen css-filter size-medium_large" alt="' + tituloEsc + '" loading="lazy">' +
-        '</div>' +
-        '<h3 class="brxe-vmggvb brxe-heading texto-equilibrado producto-titulo">' + tituloEsc + '</h3>' +
-        '<div class="brxe-esybzj brxe-text-basic extracto-listing">' + extracto + '</div>';
-
-      fragment.appendChild(el);
+    $cards.each(function() {
+      var ok = cumple(this);
+      this.style.display = ok ? '' : 'none';
+      if (!ok) return;
+      visibles++;
+      var tax = taxDe(this);
+      GRUPOS.forEach(function(g) {
+        (tax[g] || []).forEach(function(v) { disponibles[g][v] = true; });
+      });
     });
 
-    $grid[0].appendChild(fragment);
-  }
-
-  function showSkeleton() {
-    var $grid = $('#brxe-d807f8');
-    var skeleton = '<div class="skeleton-loader">';
-    for (var i = 0; i < 3; i++) {
-      skeleton += '<div class="skeleton-card">' +
-        '<div class="skeleton-img"></div>' +
-        '<div class="skeleton-title"></div>' +
-        '<div class="skeleton-text"></div>' +
-        '<div class="skeleton-text" style="width:60%;margin-top:6px;"></div>' +
-      '</div>';
+    var $vacio = $grid.children('.dlw-sin-productos');
+    if (!visibles && !$vacio.length) {
+      $grid.append('<div class="dlw-sin-productos" style="padding:2em;">No hay productos con este filtro.</div>');
+    } else if (visibles) {
+      $vacio.remove();
     }
-    skeleton += '</div>';
-    $grid.html(skeleton);
-  }
 
-  var reloadTimer = null;
-  function reloadGrid() {
-    clearTimeout(reloadTimer);
-    reloadTimer = setTimeout(function() {
-      var ids = getGridData();
-      if (!ids.length) return;
-      showSkeleton();
-      $.post(ajaxurl, {
-        action: 'filtrar_productos_evento',
-        ids: ids.join(','),
-        filtros: JSON.stringify(filtrosActivos),
-        _nonce: nonce
-      }, function(res) {
-        var productos = (res.success && res.data && Array.isArray(res.data.productos))
-          ? res.data.productos : [];
-        renderGrid(productos);
-        actualizarOpcionesFiltros(productos);
-      }).fail(function() {
-        $('#brxe-d807f8').html('<div style="padding:2em;color:#c00;">Error al cargar productos. Recarga la página.</div>');
-      });
-    }, 200);
+    // Desactivar opciones que no darían resultados (igual que antes).
+    $('.evento-filtro-btn').each(function() {
+      var grupo = this.getAttribute('data-filtro');
+      if (!disponibles[grupo]) return;
+      var available = !!disponibles[grupo][this.getAttribute('data-valor')];
+      $(this).prop('disabled', !available).toggleClass('disabled', !available);
+    });
   }
 
   function renderFiltrosActivos() {
@@ -137,14 +75,13 @@ jQuery(function($){
     $list.empty();
     var hasFilters = false;
 
-    Object.entries(filtrosActivos).forEach(function(entry) {
-      var grupo = entry[0], valores = entry[1];
-      (valores || []).forEach(function(val) {
+    Object.keys(filtrosActivos).forEach(function(grupo) {
+      (filtrosActivos[grupo] || []).forEach(function(val) {
         if (!val) return;
         hasFilters = true;
         $list.append(
-          '<div class="jet-active-filter" data-filtro="' + grupo + '" data-valor="' + escHtml(val) + '">' +
-            '<div class="jet-active-filter__label">' + (labels[grupo] || grupo) +
+          '<div class="jet-active-filter" data-filtro="' + escHtml(grupo) + '" data-valor="' + escHtml(val) + '">' +
+            '<div class="jet-active-filter__label">' + escHtml(labels[grupo] || grupo) +
               '<span class="jet-active-filter__label-separator">:</span></div>' +
             '<div class="jet-active-filter__val">' + escHtml(val) + '</div>' +
             '<div class="jet-active-filter__remove" tabindex="0" role="button" aria-label="Quitar filtro">×</div>' +
@@ -156,51 +93,42 @@ jQuery(function($){
     $list.closest('.jet-smart-filters-active').toggle(hasFilters);
   }
 
+  function leerFiltrosDeBotones(grupo, evento) {
+    filtrosActivos[grupo] = $('.evento-filtro-btn.active').filter(function() {
+      return this.getAttribute('data-filtro') === grupo && this.getAttribute('data-evento') === evento;
+    }).map(function() { return this.getAttribute('data-valor'); }).get();
+    if (!filtrosActivos[grupo].length) delete filtrosActivos[grupo];
+  }
+
   $(document).on('click', '.evento-filtro-btn', function(e) {
     e.preventDefault();
-    var $btn = $(this), grupo = $btn.data('filtro'), evento = $btn.data('evento');
+    var $btn = $(this);
     $btn.toggleClass('active');
-    filtrosActivos[grupo] = $('.evento-filtro-btn.active[data-filtro="' + grupo + '"][data-evento="' + evento + '"]')
-      .map(function() { return $(this).data('valor') + ''; }).get();
-    if (!filtrosActivos[grupo].length) delete filtrosActivos[grupo];
+    leerFiltrosDeBotones(this.getAttribute('data-filtro'), this.getAttribute('data-evento'));
     renderFiltrosActivos();
-    reloadGrid();
+    aplicarFiltros();
   });
 
-  $(document).on('click', '.jet-active-filter__remove', function(e) {
+  $(document).on('click keydown', '.jet-active-filter__remove', function(e) {
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
     var $parent = $(this).closest('.jet-active-filter'),
-        grupo = $parent.data('filtro'),
-        valor = $parent.data('valor');
-    $('.evento-filtro-btn.active[data-filtro="' + grupo + '"][data-valor="' + valor + '"]').removeClass('active');
+        grupo = $parent.attr('data-filtro'),
+        valor = $parent.attr('data-valor');
+    $('.evento-filtro-btn.active').filter(function() {
+      return this.getAttribute('data-filtro') === grupo && this.getAttribute('data-valor') === valor;
+    }).removeClass('active');
     if (filtrosActivos[grupo]) {
-      filtrosActivos[grupo] = filtrosActivos[grupo].filter(function(v) { return v != valor; });
+      filtrosActivos[grupo] = filtrosActivos[grupo].filter(function(v) { return v !== valor; });
       if (!filtrosActivos[grupo].length) delete filtrosActivos[grupo];
     }
     renderFiltrosActivos();
-    reloadGrid();
+    aplicarFiltros();
   });
 
-  function actualizarOpcionesFiltros(productos) {
-    var disponibles = { marcas: new Set(), tecnologias: new Set(), familias: new Set() };
-    productos.forEach(function(p) {
-      if (!p.taxonomias) return;
-      Object.keys(disponibles).forEach(function(tax) {
-        (p.taxonomias[tax] || []).forEach(function(x) { disponibles[tax].add(x); });
-      });
-    });
-    Object.keys(disponibles).forEach(function(tax) {
-      $('.evento-filtro-btn[data-filtro="' + tax + '"]').each(function() {
-        var val = $(this).data('valor');
-        var available = disponibles[tax].has(val);
-        $(this).prop('disabled', !available).toggleClass('disabled', !available);
-      });
-    });
-  }
-
-  // Init
-  if ($('#brxe-d807f8').length) {
-    reloadGrid();
+  // Init: marcar como no disponibles las opciones sin productos en el grid.
+  if ($grid.length) {
+    aplicarFiltros();
   }
 
   // ════════════════════════════════════════════════════════════════
