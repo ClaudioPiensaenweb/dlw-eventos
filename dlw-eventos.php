@@ -2,7 +2,7 @@
 /**
  * Plugin Name: DLW Eventos — Catálogo de productos
  * Description: Gestión de productos remotos de dlongwood.com para eventos/congresos. Reemplazo drop-in de los code snippets actuales.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: Piensaenweb
  * Text Domain: dlw-eventos
  *
@@ -21,7 +21,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('DLW_EVENTOS_VERSION', '1.3.0');
+define('DLW_EVENTOS_VERSION', '1.3.1');
 define('DLW_DB_VERSION', '2');
 define('DLW_EVENTOS_PATH', plugin_dir_path(__FILE__));
 define('DLW_EVENTOS_URL', plugin_dir_url(__FILE__));

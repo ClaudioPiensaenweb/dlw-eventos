@@ -4,8 +4,9 @@
  * SNIPPET PARA DLONGWOOD.COM (NO es parte del plugin dlw-eventos)
  * ════════════════════════════════════════════════════════════════
  *
- * Instalar en www.dlongwood.com como Code Snippet ("Solo ejecutar en
- * el sitio") o en el functions.php del tema hijo.
+ * Instalar en www.dlongwood.com como Code Snippet NUEVO («API Cambios
+ * Productos», "Solo ejecutar en el sitio"), separado de «API REST Catálogo»
+ * para que un error aquí no tumbe el catálogo. Pegar sin la línea <?php.
  *
  * Añade un endpoint MUY ligero que el plugin dlw-eventos consulta una vez
  * por noche (y solo si hay eventos activos) para saber qué productos han
@@ -35,9 +36,6 @@ add_action('rest_api_init', function () {
         'callback'            => function (WP_REST_Request $request) {
             $desde = (int) $request->get_param('desde');
 
-            // Mismo idioma que usa el catálogo (?lang=es). Compatible con WPML y Polylang.
-            do_action('wpml_switch_language', 'es');
-
             $base = [
                 'post_type'              => 'productos',
                 'post_status'            => 'publish',
@@ -47,8 +45,16 @@ add_action('rest_api_init', function () {
                 'update_post_meta_cache' => false,
                 'update_post_term_cache' => false,
                 'suppress_filters'       => false,
-                'lang'                   => 'es',
             ];
+
+            // Idioma: misma lógica que «API REST Catálogo» v2 (Polylang o WPML).
+            $wpml_lang_prev = null;
+            if (function_exists('pll_current_language')) {
+                $base['lang'] = 'es';
+            } elseif (has_filter('wpml_current_language')) {
+                $wpml_lang_prev = apply_filters('wpml_current_language', null);
+                do_action('wpml_switch_language', 'es');
+            }
 
             $publicados = get_posts($base);
 
@@ -61,6 +67,10 @@ add_action('rest_api_init', function () {
                         'inclusive' => true,
                     ]],
                 ]);
+            }
+
+            if ($wpml_lang_prev !== null) {
+                do_action('wpml_switch_language', $wpml_lang_prev);
             }
 
             $response = new WP_REST_Response([

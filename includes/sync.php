@@ -8,7 +8,7 @@
  *    Pensada para hacer el mínimo de llamadas posible:
  *      - Sin eventos activos o próximos → 0 llamadas HTTP, 0 escrituras.
  *      - Con eventos activos → 1 llamada pequeña a /catalogo/v1/cambios y
- *        solo se descargan, uno a uno, los productos que han cambiado.
+ *        otra (?ids=…, hasta 100 por llamada) con solo los productos que han cambiado.
  *      - Si dlongwood.com no tiene el endpoint de cambios → solo se
  *        descargan los productos de los eventos activos.
  *
@@ -254,17 +254,15 @@ function dlw_sync_nocturna() {
             ));
             $a_descargar = array_values(array_intersect($a_descargar, $publicados));
 
-            // Muchos cambios de golpe → sale más barato el catálogo completo (3 llamadas).
-            if (count($a_descargar) > 30) {
+            // Cambio masivo (más de 2 lotes) → sale igual o más barato el catálogo completo.
+            if (count($a_descargar) > 200) {
                 update_option('dlw_ultimo_check_cambios', (int) $cambios['ahora'], false);
                 dlw_sync_all_productos(false, 'nocturna-completa');
                 return;
             }
 
-            foreach ($a_descargar as $id) {
-                $llamadas++;
-                if (dlw_sync_producto_individual($id) === 'guardado') $guardados++;
-            }
+            list($n, $guardados) = dlw_sync_productos_por_ids($a_descargar);
+            $llamadas += $n;
 
             update_option('dlw_ultimo_check_cambios', (int) ($cambios['ahora'] ?? time()), false);
 
@@ -282,11 +280,9 @@ function dlw_sync_nocturna() {
         }
 
         // 4) Plan B: dlongwood.com aún no tiene /cambios → refrescar solo los
-        //    productos de los eventos activos, uno a uno.
-        foreach ($ids_activos as $id) {
-            $llamadas++;
-            if (dlw_sync_producto_individual($id) === 'guardado') $guardados++;
-        }
+        //    productos de los eventos activos (en lotes de 100 por llamada).
+        list($n, $guardados) = dlw_sync_productos_por_ids($ids_activos);
+        $llamadas += $n;
 
         dlw_registrar_sync([
             'count'        => dlw_count_productos(),
@@ -378,7 +374,41 @@ function dlw_sync_all_productos($bloquear = true, $modo = 'completa') {
 }
 
 /**
- * Sincroniza un producto individual por ID (webhook y sync nocturna).
+ * Descarga varios productos en lotes de 100 con ?ids= (la API v2 de
+ * dlongwood.com lo admite). Normalmente es UNA sola llamada.
+ *
+ * @return array [llamadas, guardados]
+ */
+function dlw_sync_productos_por_ids($ids) {
+    $ids = array_values(array_unique(array_filter(array_map('absint', (array) $ids))));
+    $llamadas = 0;
+    $guardados = 0;
+
+    foreach (array_chunk($ids, 100) as $lote) {
+        $llamadas++;
+        $body = dlw_api_get(add_query_arg([
+            'ids'    => implode(',', $lote),
+            'lang'   => 'es',
+            'fields' => 'detallado',
+        ], DLW_API_BASE), 30);
+
+        if (is_wp_error($body)) {
+            error_log('[DLW Sync] Error descargando lote: ' . $body->get_error_message());
+            continue;
+        }
+
+        // Con un solo ID la API devuelve el producto suelto, sin "posts".
+        $productos = isset($body['posts']) ? (array) $body['posts'] : (isset($body['id']) ? [$body] : []);
+        foreach ($productos as $p) {
+            if (dlw_guardar_producto($p) === 'guardado') $guardados++;
+        }
+    }
+
+    return [$llamadas, $guardados];
+}
+
+/**
+ * Sincroniza un producto individual por ID (webhook).
  *
  * @return string|false 'guardado', 'igual' o false.
  */

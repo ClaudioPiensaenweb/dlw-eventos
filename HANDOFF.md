@@ -1,7 +1,7 @@
 # HANDOFF — dlw-eventos
 
 > Última actualización: 2026-11-10 (SOP-188)
-> Estado: **v1.2.0 en producción** · **v1.3.0 preparada en local, sin publicar**
+> Estado: **v1.3.1 publicada en GitHub** (pendiente de actualizar en producción)
 
 Documento de traspaso. Todo lo necesario para retomar el plugin sin preguntar a nadie.
 
@@ -67,7 +67,7 @@ El plugin se actualiza solo desde las **releases de GitHub** vía `plugin-update
 - **Fechas del evento:** campos JetEngine `fecha_de_inicio` y `fecha_de_fin`. Un evento es *activo* si está en curso o empieza en los próximos `DLW_VENTANA_DIAS` (30) días.
 - **Caché:** tabla `{prefix}dlw_productos_cache` (columna `hash` para no reescribir lo que no cambia). Desde v1.3.0, cron **diario** a las 04:10 (configurable en Ajustes) → `dlw_sync_nocturna()`:
   - sin eventos activos → **0 llamadas** a dlongwood.com;
-  - con eventos activos → 1 llamada a `catalogo/v1/cambios` y descarga individual solo de lo que ha cambiado (>30 cambios → catálogo completo);
+  - con eventos activos → 1 llamada a `catalogo/v1/cambios` y otra con `?ids=` (lotes de 100) solo con lo que ha cambiado (>200 cambios → catálogo completo);
   - si dlongwood.com no tiene `/cambios` → refresca solo los productos de eventos activos;
   - si alguien abre la edición de un evento y el catálogo completo tiene >7 días → esa noche se descarga entero.
 - **Endpoint de cambios en dlongwood.com:** `extras/dlongwood-endpoint-cambios.php` (snippet para instalar en dlongwood.com, no lo carga el plugin).
@@ -82,7 +82,8 @@ El plugin se actualiza solo desde las **releases de GitHub** vía `plugin-update
 |---------|--------|-------------|
 | **v1.1.0** | `58ea8af` | Release inicial en GitHub. Caché local, metabox nativo, auto-updater, fix entidades HTML, fix reprogramación de cron, shortcodes drop-in, nonces/sanitización en AJAX. |
 | **v1.2.0** | `5d7566b` | Autorelleno del campo `nombre_evento` del formulario JetFormBuilder de la ficha de producto (ver abajo). |
-| **v1.3.0** | (sin publicar) | Sync nocturna ligera (0 llamadas sin eventos activos), endpoint de cambios, fix borrado en sync parcial, bloqueo anti-solape, hash para no reescribir, fuera `datos_json`, secreto de webhook propio. Grid pintado en servidor y filtrado en JS (sin AJAX ni descripción en el payload), assets solo en eventos/ficha, consultas memorizadas. |
+| **v1.3.0** | `bc5d522` | Sync nocturna ligera (0 llamadas sin eventos activos), endpoint de cambios, fix borrado en sync parcial, bloqueo anti-solape, hash para no reescribir, fuera `datos_json`, secreto de webhook propio. Grid pintado en servidor y filtrado en JS (sin AJAX ni descripción en el payload), assets solo en eventos/ficha, consultas memorizadas. |
+| **v1.3.1** | — | La sync nocturna descarga los cambios en lote con `?ids=` (API v2 de dlongwood.com) en vez de uno a uno. Snippet de `/cambios` alineado con el manejo de idioma de la API v2. |
 
 ### Detalle de la v1.2.0 (último cambio)
 
